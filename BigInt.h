@@ -44,8 +44,25 @@ private:
     /*This is a secondary function used to compact the representation of the number
     It will cut leading ones of negative number and leading zeros of positive ones
     */    
-    void compact(){
-        //TODO
+    std::string compact(std::string bit_string)const{
+        //Determine the leading bit
+        char leading_bit = bit_string[0];
+        //Get index of the most value bit (first bit that is not the same as the leading bit)
+        int most_index = 0;
+        while(bit_string[most_index] == leading_bit)
+            most_index ++;
+        //Cut the string from that index
+        bit_string = bit_string.substr(most_index);
+        //Add 1 leading bit at the beginning of the string
+        bit_string = leading_bit + bit_string;
+        //Count number of elements in a vector needed for representing the string
+        int num_elements_needed = (bit_string.size() + BITS_IN_ELEMENT - 1)/BITS_IN_ELEMENT;
+        //Buffing the string
+        int string_length = bit_string.length();
+        for(int i = 0; i < num_elements_needed*BITS_IN_ELEMENT - string_length; i++){
+            bit_string = leading_bit + bit_string;
+        }
+        return bit_string;
     }
     /*This is a secondary function used to return two's complement binary
     for this number*/
@@ -68,23 +85,8 @@ private:
 public:
     BigInt(){}
     BigInt(std::string bit_string){
-        //Determine the leading bit
-        char leading_bit = bit_string[0];
-        //Get index of the most value bit (first bit that is not the same as the leading bit)
-        int most_index = 0;
-        while(bit_string[most_index] == leading_bit)
-            most_index ++;
-        //Cut the string from that index
-        bit_string = bit_string.substr(most_index);
-        //Add 1 leading bit at the beginning of the string
-        bit_string = leading_bit + bit_string;
-        //Count number of elements in a vector needed for representing the string
+        bit_string = compact(bit_string);
         int num_elements_needed = (bit_string.size() + BITS_IN_ELEMENT - 1)/BITS_IN_ELEMENT;
-        //Buffing the string
-        int string_length = bit_string.length();
-        for(int i = 0; i < num_elements_needed*BITS_IN_ELEMENT - string_length; i++){
-            bit_string = leading_bit + bit_string;
-        }
         //Resize content
         content.resize(num_elements_needed,0);
         //Convert binary to integer for each element
@@ -176,7 +178,7 @@ public:
             char leading_buffed = buffed[0];
             int num_leading_buffed = binary_1.length() - binary_2.length();
             if(num_leading_buffed < 0)
-                num_leading_buffed -= num_leading_buffed;
+                num_leading_buffed = -num_leading_buffed;
             for(int i = 0; i < num_leading_buffed; i++)
                 buffed = leading_buffed + buffed; 
             if(binary_1.length() < binary_2.length())
@@ -207,40 +209,86 @@ public:
     BigInt operator-(const BigInt& other){
         return operator+(BigInt(other.binary_complement()));
     }
-    /*Ta sẽ thực hiện hàm so sánh bằng như thế nào?
-    * Với điều kiện là một BigInt luôn được biểu diễn dưới dạng gọn gàng nhất, thì 2 BigInt bằng nhau
-    * chỉ khi tất cả các bit của chúng giống hệt nhau
-    * => Ta phải thực hiện hàm compact, giúp cho việc biểu diễn các số được gọn gàng nhất.
-    */
-    bool operator==(const BigInt& other){
-
+    bool operator==(const BigInt& other) const{
+        std::string binary_1 = compact(this->binary());
+        std::string binary_2 = compact(other.binary());
+        return binary_1 == binary_2;
     }
-    /*Ta sẽ thực hiện phép nhân như thế nào?
-        * Bản chất của phép nhân là thực hiện hàng loạt phép cộng, vậy nên ta sẽ
-        thực hiện dựa trên phép cộng
-        * Nếu nhân với số có dấu âm thì sao?
-            * Thì ta sẽ chuyển dấu của số đó sang cho số đầu tiên
-            * Và thực hiện phép nhân với số dương
-        * Thực hiện phép nhân với số dương như thế nào?
-        *   Ta sẽ thực hiện hàng loạt phép cộng
-        *   Điều đó có nghĩa cần phải có một vòng lặp
-        *   Để vòng lặp dừng, thì phải có một hàm so sánh 2 BigInt
-        *   => Ta phải thực hiện thêm một hàm so sánh bằng
-    */
     BigInt operator*(const BigInt& other){
-
+        /*Check if the other BigInt is negative or not
+        if so, put the sign on this number*/
+        if(other == BigInt('0')) return BigInt('0');
+        BigInt result('0');
+        BigInt zero('0');
+        BigInt number_1 = *this;
+        BigInt number_2 = other;
+        if(other.isNegative()){
+            number_1 = zero - number_1;
+            number_2 = zero - number_2;
+        }
+        std::string binary_1 = number_1.binary();
+        std::string binary_2 = number_2.binary();
+        //Traverse from last bit to the first
+        for(int i = binary_2.length() - 1; i >= 0; i--){
+            if(binary_2[i] == '1')
+                result = result + BigInt(binary_1);
+            binary_1 = binary_1 + '0';
+        }
+        return result;
     }
-    // BigInt operator/(const BigInt& other){
-
-    // }
-    // BigInt mod(const BigInt& other){
-
-    // }
-    bool isOdd(){
+    BigInt operator/(const BigInt& other){
+        if(other == BigInt('0'))
+            throw "Divided by zero\n";
+        if(*this == BigInt('0')) 
+            return BigInt('0');
+        //Determine the sign of the result
+        bool pos = ((this->isNegative() ^ other.isNegative()) == false)? true : false;
+        //Make sure each number is positive
+        BigInt number_1 = *this;
+        BigInt number_2 = other;
+        if(number_1.isNegative())
+            number_1 = BigInt('0') - number_1;
+        if(number_2.isNegative())
+            number_2 = BigInt('0') - number_2;
+        //Strip zeros
+        std::string binary_1 = number_1.binary();
+        std::string binary_2 = number_2.binary();
+        binary_1 = binary_1.substr(binary_1.find_first_not_of('0'));
+        binary_2 = binary_2.substr(binary_2.find_first_not_of('0'));
+        //Perform divide two binary string
+        std::string window = '0' + binary_1.substr(0,binary_2.length()-1);
+        std::string result = "";
+        for(int i = binary_2.length() - 1; i < binary_1.length(); i++){
+            window = window + binary_1[i];
+            if(BigInt(window) < number_2)
+                result = result + '0';
+            else{
+                result = result + '1';
+                window = (BigInt(window) - number_2).binary();
+            }
+        } 
+        //Add a zero at the beginning of the result
+        result = '0' + result;
+        //Add sign to the result
+        BigInt result_number(result);
+        if(!pos)
+            result_number = BigInt('0') - result_number;
+        return result_number;
+    }
+    BigInt operator%(const BigInt& other){
+        BigInt result_divide = *this/other;
+        if(result_divide.isNegative())
+            result_divide = result_divide - BigInt("01");
+        return *this - result_divide*other;
+    }
+    bool operator<(const BigInt& other){
+        return (*this - other).isNegative();
+    }
+    bool isOdd() const{
         return false;
     }
     //Check if the number is negative or positive
-    bool isNegative(){
+    bool isNegative() const{
         return (content[0] < 0)? true:false;
     }
 };
